@@ -67,12 +67,12 @@ target_include_directories(GAME PUBLIC template)
 # Precompile the precomp.h
 target_precompile_headers(GAME PUBLIC template/precomp.h)
 
-# Copy assets
-add_custom_target(copy_assets ALL
+# Copy assets next to the executable. With VS/MSVC multi-config, GAME.exe lives in
+# build/Release or build/Debug, while CMAKE_BINARY_DIR is just build/ — relative paths
+# like assets/bird.png would otherwise fail when the working directory is the exe folder.
+add_custom_command(
+    TARGET GAME POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_SOURCE_DIR}/assets ${CMAKE_BINARY_DIR}/assets
-    COMMENT "Copying assets to build directory"
+        "${CMAKE_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:GAME>/assets"
+    COMMENT "Copying assets next to GAME executable"
 )
-
-# Ensure that your main target triggers the asset copy
-add_dependencies(GAME copy_assets)
