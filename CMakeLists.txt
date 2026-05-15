@@ -21,13 +21,6 @@ add_executable(
     template/tmpl8math.cpp
 )
 
-# AVX2 
-if (MSVC)
-    target_compile_options(GAME PRIVATE /arch:AVX2 /O2 /fp:fast /Oi /Ot)
-else()
-    target_compile_options(GAME PRIVATE -mavx2 -mfma -O3 -ffast-math)
-endif()
-
 # ARM specific code
 if (USE_ARM)
     target_compile_definitions(GAME PRIVATE USE_ARM)

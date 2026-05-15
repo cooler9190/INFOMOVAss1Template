@@ -69,6 +69,18 @@ void UndoMutation( int i )
 	lc[i] = c_;
 }
 
+// Branchless SWAR blend
+inline uint Blend( uint fg, uint bg, uint alpha )
+{
+    uint invAlpha = 255 - alpha;
+    // Blend Red and Blue simultaneously
+    uint rb = (((fg & 0XFF00FF) * alpha + (bg & 0xFF00FF) * invAlpha) >> 8) & 0xFF00FF;
+    // Blend Green
+    uint g = (((fg & 0x00FF00) * alpha + (bg & 0x00FF00) * invAlpha) >> 8) & 0x00FF00;
+
+    return rb | g;
+}
+
 // -----------------------------------------------------------
 // DrawWuLine
 // Anti-aliased line rendering.
@@ -141,56 +153,64 @@ void DrawWuLine( Surface *screen, int X0, int Y0, int X1, int Y1, uint clrLine )
             Weighting = ErrorAcc >> 8;
 
             int rowOffset = Y0 * SCRWIDTH;
-
-            COLORREF clrBackGround = screen->pixels[X0 + rowOffset];
-            BYTE rb = clrBackGround & 0xFF;
-            BYTE gb = (clrBackGround >> 8) & 0xFF;
-            BYTE bb = (clrBackGround >> 16) & 0xFF;
-            int grayb = (77 * rb + 150 * gb + 29 * bb) >> 8;
-
-            unsigned int weight = (grayl < grayb) ? Weighting : (Weighting ^ 255);
-
-            int differenceR = rb - rl;
-            int absDifferenceR = differenceR < 0 ? -differenceR : differenceR;
-            int minValR = differenceR < 0 ? rb : rl;
-            BYTE rr = (BYTE)( minValR + ((absDifferenceR * weight + absDifferenceR) >> 8) );      
-
-            int differenceG = gb - gl;
-            int absDifferenceG = differenceG < 0 ? -differenceG : differenceG;
-            int minValG = differenceG < 0 ? gb : gl;
-            BYTE gr = (BYTE)( minValG + ((absDifferenceG * weight + absDifferenceG) >> 8) );
-
-            int differenceB = bb - bl;
-            int absDifferenceB = differenceB < 0 ? -differenceB : differenceB;
-            int minValB = differenceB < 0 ? bb : bl;
-            BYTE br = (BYTE)( minValB + ((absDifferenceB * weight + absDifferenceB) >> 8) );
-
-            screen->Plot( X0, Y0, RGB( rr, gr, br ) );
-
-            clrBackGround = screen->pixels[X0 + XDir + rowOffset];
-            rb = clrBackGround & 0xFF;
-            gb = (clrBackGround >> 8) & 0xFF;
-            bb = (clrBackGround >> 16) & 0xFF;
-            grayb = (77 * rb + 150 * gb + 29 * bb) >> 8;
-
-            weight = (grayl < grayb) ? (Weighting ^ 255) : Weighting;
-
-            differenceR = rb - rl;
-            absDifferenceR = differenceR < 0 ? -differenceR : differenceR;
-            minValR = differenceR < 0 ? rb : rl;
-            rr = (BYTE)( minValR + ((absDifferenceR * weight + absDifferenceR) >> 8) );      
-
-            differenceG = gb - gl;
-            absDifferenceG = differenceG < 0 ? -differenceG : differenceG;
-            minValG = differenceG < 0 ? gb : gl;
-            gr = (BYTE)( minValG + ((absDifferenceG * weight + absDifferenceG) >> 8) );
-
-            differenceB = bb - bl;
-            absDifferenceB = differenceB < 0 ? -differenceB : differenceB;
-            minValB = differenceB < 0 ? bb : bl;
-            br = (BYTE)( minValB + ((absDifferenceB * weight + absDifferenceB) >> 8) );
             
-            screen->Plot( X0 + XDir, Y0, RGB( rr, gr, br ) );
+            // Plot main pixel
+            uint clrBackGround1 = screen -> pixels[X0 + rowOffset];
+            screen -> Plot(X0, Y0, Blend(clrLine, clrBackGround1, Weighting ^ 255));
+
+            // Plot adjacent pixel
+            uint clrBackGround2 = screen -> pixels[X0 + XDir + rowOffset];
+            screen -> Plot(X0 + XDir, Y0, Blend(clrLine, clrBackGround2, Weighting));
+
+            // COLORREF clrBackGround = screen->pixels[X0 + rowOffset];
+            // BYTE rb = clrBackGround & 0xFF;
+            // BYTE gb = (clrBackGround >> 8) & 0xFF;
+            // BYTE bb = (clrBackGround >> 16) & 0xFF;
+            // int grayb = (77 * rb + 150 * gb + 29 * bb) >> 8;
+
+            // unsigned int weight = (grayl < grayb) ? Weighting : (Weighting ^ 255);
+
+            // int differenceR = rb - rl;
+            // int absDifferenceR = differenceR < 0 ? -differenceR : differenceR;
+            // int minValR = differenceR < 0 ? rb : rl;
+            // BYTE rr = (BYTE)( minValR + ((absDifferenceR * weight + absDifferenceR) >> 8) );      
+
+            // int differenceG = gb - gl;
+            // int absDifferenceG = differenceG < 0 ? -differenceG : differenceG;
+            // int minValG = differenceG < 0 ? gb : gl;
+            // BYTE gr = (BYTE)( minValG + ((absDifferenceG * weight + absDifferenceG) >> 8) );
+
+            // int differenceB = bb - bl;
+            // int absDifferenceB = differenceB < 0 ? -differenceB : differenceB;
+            // int minValB = differenceB < 0 ? bb : bl;
+            // BYTE br = (BYTE)( minValB + ((absDifferenceB * weight + absDifferenceB) >> 8) );
+
+            // screen->Plot( X0, Y0, RGB( rr, gr, br ) );
+
+            // clrBackGround = screen->pixels[X0 + XDir + rowOffset];
+            // rb = clrBackGround & 0xFF;
+            // gb = (clrBackGround >> 8) & 0xFF;
+            // bb = (clrBackGround >> 16) & 0xFF;
+            // grayb = (77 * rb + 150 * gb + 29 * bb) >> 8;
+
+            // weight = (grayl < grayb) ? (Weighting ^ 255) : Weighting;
+
+            // differenceR = rb - rl;
+            // absDifferenceR = differenceR < 0 ? -differenceR : differenceR;
+            // minValR = differenceR < 0 ? rb : rl;
+            // rr = (BYTE)( minValR + ((absDifferenceR * weight + absDifferenceR) >> 8) );      
+
+            // differenceG = gb - gl;
+            // absDifferenceG = differenceG < 0 ? -differenceG : differenceG;
+            // minValG = differenceG < 0 ? gb : gl;
+            // gr = (BYTE)( minValG + ((absDifferenceG * weight + absDifferenceG) >> 8) );
+
+            // differenceB = bb - bl;
+            // absDifferenceB = differenceB < 0 ? -differenceB : differenceB;
+            // minValB = differenceB < 0 ? bb : bl;
+            // br = (BYTE)( minValB + ((absDifferenceB * weight + absDifferenceB) >> 8) );
+            
+            // screen->Plot( X0 + XDir, Y0, RGB( rr, gr, br ) );
         }
         /* Draw the final pixel, which is always exactly intersected by the line
         and so needs no weighting */
@@ -218,55 +238,63 @@ void DrawWuLine( Surface *screen, int X0, int Y0, int X1, int Y1, uint clrLine )
 
         int rowOffset = Y0 * SCRWIDTH;
 
-        COLORREF clrBackGround = screen->pixels[X0 + rowOffset];
-        BYTE rb = clrBackGround & 0xFF;
-        BYTE gb = (clrBackGround >> 8) & 0xFF;
-        BYTE bb = (clrBackGround >> 16) & 0xFF;
-        int grayb = (77 * rb + 150 * gb + 29 * bb) >> 8;
+        // plot main pixel
+        uint clrBackGround1 = screen -> pixels[X0 + rowOffset];
+        screen -> Plot(X0, Y0, Blend(clrLine, clrBackGround1, Weighting ^ 255));
 
-        unsigned int weight = (grayl < grayb) ? Weighting : (Weighting ^ 255);
+        // Plot adjacent pixel
+        uint clrBackGround2 = screen -> pixels[X0 + rowOffset + SCRWIDTH];
+        screen -> Plot(X0, Y0 + 1, Blend(clrLine, clrBackGround2, Weighting));
 
-        int differenceR = rb - rl;
-        int absDifferenceR = differenceR < 0 ? -differenceR : differenceR;
-        int minValR = differenceR < 0 ? rb : rl;
-        BYTE rr = (BYTE)( minValR + ((absDifferenceR * weight + absDifferenceR) >> 8) );      
+        // COLORREF clrBackGround = screen->pixels[X0 + rowOffset];
+        // BYTE rb = clrBackGround & 0xFF;
+        // BYTE gb = (clrBackGround >> 8) & 0xFF;
+        // BYTE bb = (clrBackGround >> 16) & 0xFF;
+        // int grayb = (77 * rb + 150 * gb + 29 * bb) >> 8;
 
-        int differenceG = gb - gl;
-        int absDifferenceG = differenceG < 0 ? -differenceG : differenceG;
-        int minValG = differenceG < 0 ? gb : gl;
-        BYTE gr = (BYTE)( minValG + ((absDifferenceG * weight + absDifferenceG) >> 8) );
+        // unsigned int weight = (grayl < grayb) ? Weighting : (Weighting ^ 255);
 
-        int differenceB = bb - bl;
-        int absDifferenceB = differenceB < 0 ? -differenceB : differenceB;
-        int minValB = differenceB < 0 ? bb : bl;
-        BYTE br = (BYTE)( minValB + ((absDifferenceB * weight + absDifferenceB) >> 8) );
+        // int differenceR = rb - rl;
+        // int absDifferenceR = differenceR < 0 ? -differenceR : differenceR;
+        // int minValR = differenceR < 0 ? rb : rl;
+        // BYTE rr = (BYTE)( minValR + ((absDifferenceR * weight + absDifferenceR) >> 8) );      
 
-        screen->Plot( X0, Y0, RGB( rr, gr, br ) );
+        // int differenceG = gb - gl;
+        // int absDifferenceG = differenceG < 0 ? -differenceG : differenceG;
+        // int minValG = differenceG < 0 ? gb : gl;
+        // BYTE gr = (BYTE)( minValG + ((absDifferenceG * weight + absDifferenceG) >> 8) );
 
-        clrBackGround = screen->pixels[X0 + rowOffset + SCRWIDTH];
-        rb = clrBackGround & 0xFF;
-        gb = (clrBackGround >> 8) & 0xFF;
-        bb = (clrBackGround >> 16) & 0xFF;
-        grayb = (77 * rb + 150 * gb + 29 * bb) >> 8;
+        // int differenceB = bb - bl;
+        // int absDifferenceB = differenceB < 0 ? -differenceB : differenceB;
+        // int minValB = differenceB < 0 ? bb : bl;
+        // BYTE br = (BYTE)( minValB + ((absDifferenceB * weight + absDifferenceB) >> 8) );
 
-        weight = (grayl < grayb) ? (Weighting ^ 255) : Weighting;
+        // screen->Plot( X0, Y0, RGB( rr, gr, br ) );
 
-        differenceR = rb - rl;
-        absDifferenceR = differenceR < 0 ? -differenceR : differenceR;
-        minValR = differenceR < 0 ? rb : rl;
-        rr = (BYTE)( minValR + ((absDifferenceR * weight + absDifferenceR) >> 8) );      
+        // clrBackGround = screen->pixels[X0 + rowOffset + SCRWIDTH];
+        // rb = clrBackGround & 0xFF;
+        // gb = (clrBackGround >> 8) & 0xFF;
+        // bb = (clrBackGround >> 16) & 0xFF;
+        // grayb = (77 * rb + 150 * gb + 29 * bb) >> 8;
 
-        differenceG = gb - gl;
-        absDifferenceG = differenceG < 0 ? -differenceG : differenceG;
-        minValG = differenceG < 0 ? gb : gl;
-        gr = (BYTE)( minValG + ((absDifferenceG * weight + absDifferenceG) >> 8) );
+        // weight = (grayl < grayb) ? (Weighting ^ 255) : Weighting;
 
-        differenceB = bb - bl;
-        absDifferenceB = differenceB < 0 ? -differenceB : differenceB;
-        minValB = differenceB < 0 ? bb : bl;
-        br = (BYTE)( minValB + ((absDifferenceB * weight + absDifferenceB) >> 8) );
+        // differenceR = rb - rl;
+        // absDifferenceR = differenceR < 0 ? -differenceR : differenceR;
+        // minValR = differenceR < 0 ? rb : rl;
+        // rr = (BYTE)( minValR + ((absDifferenceR * weight + absDifferenceR) >> 8) );      
 
-        screen->Plot( X0, Y0 + 1, RGB( rr, gr, br ) );
+        // differenceG = gb - gl;
+        // absDifferenceG = differenceG < 0 ? -differenceG : differenceG;
+        // minValG = differenceG < 0 ? gb : gl;
+        // gr = (BYTE)( minValG + ((absDifferenceG * weight + absDifferenceG) >> 8) );
+
+        // differenceB = bb - bl;
+        // absDifferenceB = differenceB < 0 ? -differenceB : differenceB;
+        // minValB = differenceB < 0 ? bb : bl;
+        // br = (BYTE)( minValB + ((absDifferenceB * weight + absDifferenceB) >> 8) );
+
+        // screen->Plot( X0, Y0 + 1, RGB( rr, gr, br ) );
     }
 
     /* Draw the final pixel, which is always exactly intersected by the line
@@ -282,19 +310,47 @@ int Game::Evaluate()
 {
 	const uint count = SCRWIDTH * SCRHEIGHT;
 	__int64 diff = 0;
-	for( uint i = 0; i < count; i++ )
+
+    uint* src = screen->pixels;
+    uint* ref = reference->pixels;
+
+    // Unroll by 4 to reduce loop overhead
+	for (uint i = 0; i < count; i += 4) 
 	{
-		uint src = screen->pixels[i];
-		uint ref = reference->pixels[i];
-		int r0 = src & 255, g0 = (src >> 8) & 255, b0 = (src >> 16) & 255;
-		int r1 = ref & 255, g1 = (ref >> 8) & 255, b1 = (ref >> 16) & 255;
-		int dr = r0 - r1, dg = g0 - g1, db = b0 - b1;
-		// calculate squared color difference;
-		// take into account eye sensitivity to red, green and blue
-		diff += ((dr << 1) + dr) * dr + ((dg << 2) + (dg << 1)) * dg + db * db;
+        for (int j = 0; j < 4; j++)
+        {
+            uint s = *src++;
+            uint r = *ref++;
+
+            int r0 = s & 255, g0 = (s >> 8) & 255, b0 = (s >> 16) & 255;
+            int r1 = r & 255, g1 = (r >> 8) & 255, b1 = (r >> 16) & 255;
+            int dr = r0 - r1, dg = g0 - g1, db = b0 - b1;
+
+            // calculate squared color difference;
+            // take into account eye sensitivity to red, green and blue
+            diff += ((dr << 1) + dr) * dr + ((dg << 2) + (dg << 1)) * dg + db * db;
+        }
 	}
 	return (int)(diff >> 5);
 }
+
+// int Game::Evaluate()
+// {
+// 	const uint count = SCRWIDTH * SCRHEIGHT;
+// 	__int64 diff = 0;
+// 	for( uint i = 0; i < count; i++ )
+// 	{
+// 		uint src = screen->pixels[i];
+// 		uint ref = reference->pixels[i];
+// 		int r0 = src & 255, g0 = (src >> 8) & 255, b0 = (src >> 16) & 255;
+// 		int r1 = ref & 255, g1 = (ref >> 8) & 255, b1 = (ref >> 16) & 255;
+// 		int dr = r0 - r1, dg = g0 - g1, db = b0 - b1;
+// 		// calculate squared color difference;
+// 		// take into account eye sensitivity to red, green and blue
+// 		diff += ((dr << 1) + dr) * dr + ((dg << 2) + (dg << 1)) * dg + db * db;
+// 	}
+// 	return (int)(diff >> 5);
+// }
 
 // -----------------------------------------------------------
 // Application initialization
